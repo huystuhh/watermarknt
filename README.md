@@ -22,17 +22,17 @@ deactivate
 python main.py sample no_sample
 ```
 
-2. Specify watermark text to remove:
+2. Specify watermark text to remove along with directories:
 ```bash
 python main.py <input_dir>> <output_dir> --text "WATERMARK"
 ```
 
 ## Notes
 
-Currently, this watermark removal tool is very bad, to be frank. Watermark removal has historically been very difficult to do (unsurprising). You can see the end result images in the [no_sample](./no_sample/) directory (original images in the [sample](./sample/) directory). The watermark is clearly still very visible.
+Currently, this watermark removal tool is, to be frank, very bad. Watermark removal has historically been very difficult to do (unsurprisingly, by design). You can see the end result images in the [no_sample](./no_sample/) directory (original images in the [sample](./sample/) directory). The watermark is clearly still visible.
 
-Best-in-class watermark removal tools nowadays leverage AI/ML using inpainting. A couple very powerful watermark tools out there are:
+Best-in-class watermark removal tools nowadays leverage AI/ML using inpainting. A couple powerful watermark tools out there are:
 - [WatermarkRemover-AI](https://github.com/D-Ogi/WatermarkRemover-AI)
 - [watermark-removal](https://github.com/zuruoke/watermark-removal)
 
-A rudimentary/naive approach to watermark removal without AI/ML seems to be, quite frankly, an exercise in futility. Next steps would be improving this code with that in mind.
+A rudimentary/naive approach to watermark removal without AI/ML such as this one ultimately seems to be an exercise in futility. Next steps would be improving this code with that in mind.
