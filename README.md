@@ -19,7 +19,7 @@ deactivate
 
 1. Remove watermark by searching for default "SAMPLE" text:
 ```bash
-python main.py sample no_sample
+python main.py sample output
 ```
 
 2. Specify watermark text to remove along with directories:
@@ -29,11 +29,11 @@ python main.py <input_dir>> <output_dir> --text "WATERMARK"
 
 ## Notes
 
-Currently, this watermark removal tool is, to be frank, very bad. Watermark removal has historically been very difficult to do (unsurprisingly, by design). You can see the end result images in the [no_sample](./no_sample/) directory and original images in the [sample](./sample/) directory. The watermark is clearly still visible.
+Currently, this watermark removal tool is, to be frank, very bad. Watermark removal has historically been very difficult to do (unsurprisingly, by design). You can see the end result images in the [output](./output/) directory and original images in the [sample](./sample/) directory. The watermark is clearly still visible.
 
 Original | Result
 :-------------------------:|:-------------------------:
-![SAMPLE](./sample/EB01-040_p1.png) | ![NO_SAMPLE](./no_sample/EB01-040_p1.png)
+![SAMPLE](./sample/OP01-003_p1.png) | ![OUTPUT](./output/OP01-003_p1.png)
 
 Best-in-class watermark removal tools nowadays leverage AI/ML using inpainting. A couple powerful watermark tools out there are:
 - [WatermarkRemover-AI](https://github.com/D-Ogi/WatermarkRemover-AI)
