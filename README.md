@@ -36,8 +36,8 @@ Original | Result
 ![SAMPLE](./sample/OP01-003_p1.png) | ![OUTPUT](./output/OP01-003_p1.png)
 
 Best-in-class watermark removal tools nowadays leverage AI/ML using inpainting. A couple powerful watermark tools out there are:
-- [WatermarkRemover-AI](https://github.com/D-Ogi/WatermarkRemover-AI)
-- [watermark-removal](https://github.com/zuruoke/watermark-removal)
+- [WatermarkRemover-AI](https://github.com/D-Ogi/WatermarkRemover-AI){:target="_blank" rel="noopener noreferrer"}
+- [watermark-removal](https://github.com/zuruoke/watermark-removal){:target="_blank" rel="noopener noreferrer"}
 
 A rudimentary/naive approach to watermark removal without AI/ML such as this one ultimately seems to be an exercise in futility. Next steps would be improving this code with that in mind.
 
