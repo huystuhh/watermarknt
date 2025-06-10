@@ -40,3 +40,13 @@ Best-in-class watermark removal tools nowadays leverage AI/ML using inpainting. 
 - [watermark-removal](https://github.com/zuruoke/watermark-removal)
 
 A rudimentary/naive approach to watermark removal without AI/ML such as this one ultimately seems to be an exercise in futility. Next steps would be improving this code with that in mind.
+
+## License
+
+This project is licensed under the GNU General Public License v3.0 - see the [LICENSE](LICENSE) file for details.
+
+The GPL-3.0 license ensures that:
+- This software is free and open source
+- Any modifications must also be open source
+- Commercial use is not permitted without explicit permission
+- The author is protected from liability
