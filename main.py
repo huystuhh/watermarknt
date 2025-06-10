@@ -36,7 +36,7 @@ def remove_watermark(image_path, output_path, watermark_text="SAMPLE"):
 
     return True
 
-def process_directory(input_dir, output_dir, watermark_text="SAMPLE"):
+def process_images(input_dir, output_dir, watermark_text="SAMPLE"):
     # Create output directory if it doesn't exist
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -59,7 +59,7 @@ def process_directory(input_dir, output_dir, watermark_text="SAMPLE"):
         if remove_watermark(image_path, output_path, watermark_text):
             processed_count += 1
 
-    print(f"Processing complete:")
+    print("Processing complete:")
     print(f"- Successful: {processed_count}")
     print(f"- Failed: {len(image_files) - processed_count}")
 
@@ -72,7 +72,7 @@ def main():
     args = parser.parse_args()
 
     try:
-        process_directory(args.input_dir, args.output_dir, args.text)
+        process_images(args.input_dir, args.output_dir, args.text)
     except Exception as e:
         print(f"Error: {str(e)}")
 
