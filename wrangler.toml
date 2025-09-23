@@ -10,7 +10,3 @@ enabled = true
 head_sampling_rate = 1
 # Head-based sampling rate (0-1): 1 = 100% of requests logged
 # Lower values like 0.1 = 10% sampling for high-traffic apps
-
-[observability.logging]
-enabled = true
-# Include invocation logs with request/response metadata
