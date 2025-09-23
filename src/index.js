@@ -39,7 +39,7 @@ export default {
           status: 'healthy',
           timestamp: Date.now(),
           deployment: 'cloudflare-workers',
-          algorithms: ['basic', 'edge', 'frequency']
+          algorithm: 'comprehensive'
         }), {
           headers: {
             'Content-Type': 'application/json',
@@ -57,7 +57,6 @@ async function handleWatermarkRemoval(request, env) {
     const formData = await request.formData();
     const imageFile = formData.get('image');
     const watermarkText = formData.get('text') || 'SAMPLE';
-    const algorithm = formData.get('algorithm') || 'basic';
 
     if (!imageFile) {
       return new Response(JSON.stringify({ error: 'No image file provided' }), {
@@ -69,8 +68,8 @@ async function handleWatermarkRemoval(request, env) {
     // Convert file to ArrayBuffer for processing
     const imageBuffer = await imageFile.arrayBuffer();
 
-    // Process image with basic watermark removal
-    const result = await processImageBasic(imageBuffer, watermarkText, algorithm);
+    // Process image with watermark removal
+    const result = await processImageBasic(imageBuffer, watermarkText);
 
     return new Response(result, {
       headers: {
@@ -95,8 +94,8 @@ async function handleWatermarkRemoval(request, env) {
   }
 }
 
-async function processImageBasic(imageBuffer, watermarkText, algorithm) {
-  console.log(`Processing with ${algorithm} algorithm using Photon WebAssembly`);
+async function processImageBasic(imageBuffer, watermarkText) {
+  console.log('Processing image for watermark removal using Photon WebAssembly');
 
   try {
     // Use Photon WebAssembly library for actual image processing
@@ -106,7 +105,7 @@ async function processImageBasic(imageBuffer, watermarkText, algorithm) {
     const photonImage = open_image(uint8Array);
 
     // Apply watermark removal algorithm
-    const processedImage = await applyWatermarkRemoval(photonImage, algorithm, watermarkText);
+    const processedImage = await applyWatermarkRemoval(photonImage, watermarkText);
 
     // Get processed image bytes
     const resultBytes = processedImage.get_bytes();
@@ -118,7 +117,7 @@ async function processImageBasic(imageBuffer, watermarkText, algorithm) {
 
     // Try fallback processing
     try {
-      return await processWithSimpleFallback(imageBuffer, algorithm);
+      return await processWithSimpleFallback(imageBuffer);
     } catch (fallbackError) {
       console.error('Fallback processing failed:', fallbackError);
       return imageBuffer;
@@ -126,89 +125,36 @@ async function processImageBasic(imageBuffer, watermarkText, algorithm) {
   }
 }
 
-async function applyWatermarkRemoval(photonImage, algorithm, watermarkText) {
-  console.log(`Applying ${algorithm} watermark removal algorithm`);
+async function applyWatermarkRemoval(photonImage, watermarkText) {
+  console.log('Applying aggressive watermark removal algorithm');
 
-  // Clone the image for processing
-  let processedImage = photonImage.clone();
-
-  switch (algorithm) {
-    case 'edge':
-      return applyEdgePreservingRemoval(processedImage);
-    case 'frequency':
-      return applyFrequencyDomainRemoval(processedImage);
-    default:
-      return applyBasicWatermarkRemoval(processedImage);
-  }
+  // Apply comprehensive watermark removal using multiple techniques
+  return applyComprehensiveWatermarkRemoval(photonImage);
 }
 
-function applyBasicWatermarkRemoval(photonImage) {
-  // Basic approach: aggressive blur and brightness adjustments
+function applyComprehensiveWatermarkRemoval(photonImage) {
+  // Comprehensive watermark removal using multiple aggressive techniques
 
-  // Apply stronger Gaussian blur to significantly reduce watermark visibility
-  gaussian_blur(photonImage, 4.0);
+  // Step 1: Apply strong blur to remove watermark details
+  gaussian_blur(photonImage, 6.0);
 
-  // Brighten the image to counter any darkening from blur
-  brighten(photonImage, 15);
+  // Step 2: Reduce saturation significantly to make watermarks less visible
+  hsl(photonImage, 0, -60, -10); // Reduce saturation by 60%, lightness by 10%
 
-  // Apply selective color conversion to reduce watermark prominence
-  // Target light colors (typical watermark colors) and make them more neutral
-  selective_color_convert(photonImage, "lighten", new Rgb(240, 240, 240));
-
-  return photonImage;
-}
-
-function applyEdgePreservingRemoval(photonImage) {
-  // Edge-preserving approach using HSL manipulation and selective processing
-
-  // First, convert to grayscale temporarily to identify watermark areas
-  const grayClone = photonImage.clone();
-  grayscale(grayClone);
-
-  // Apply threshold to create a mask for bright watermark areas
-  threshold(grayClone, 180);
-
-  // Apply HSL adjustments to reduce watermark saturation and lightness
-  hsl(photonImage, 0, -30, -20); // Reduce saturation by 30, lightness by 20
-
-  // Apply moderate blur specifically for watermark reduction
-  gaussian_blur(photonImage, 3.0);
-
-  // Brighten slightly to compensate
-  brighten(photonImage, 10);
-
-  return photonImage;
-}
-
-function applyFrequencyDomainRemoval(photonImage) {
-  // Frequency domain approach using aggressive processing and inversion techniques
-
-  // Create a working copy for aggressive processing
-  const workingImage = photonImage.clone();
-
-  // Apply aggressive threshold to isolate watermark elements
-  threshold(workingImage, 200);
-
-  // Invert to highlight watermark areas
-  invert(workingImage);
-
-  // Apply strong blur to the original image to remove high-frequency watermarks
-  gaussian_blur(photonImage, 5.0);
-
-  // Reduce saturation significantly to make watermarks less visible
-  hsl(photonImage, 0, -50, 0);
-
-  // Apply selective color conversion to neutralize typical watermark colors
+  // Step 3: Apply selective color conversion to neutralize watermark colors
   selective_color_convert(photonImage, "desaturate", new Rgb(255, 255, 255));
 
-  // Brighten to compensate for processing artifacts
-  brighten(photonImage, 20);
+  // Step 4: Brighten the image to compensate for processing
+  brighten(photonImage, 25);
+
+  // Step 5: Apply threshold processing to further reduce watermark visibility
+  threshold(photonImage, 50);
 
   return photonImage;
 }
 
-async function processWithSimpleFallback(imageBuffer, algorithm) {
-  console.log(`Fallback processing with ${algorithm} algorithm`);
+async function processWithSimpleFallback(imageBuffer) {
+  console.log('Fallback processing');
 
   // Simple fallback that doesn't corrupt the image
   await new Promise(resolve => setTimeout(resolve, 1000));
@@ -521,14 +467,6 @@ function getHTML() {
                 <label for="watermarkText">Watermark Text (optional):</label>
                 <input type="text" id="watermarkText" placeholder="e.g., SAMPLE" value="SAMPLE">
             </div>
-            <div class="control-group">
-                <label for="algorithm">Algorithm:</label>
-                <select id="algorithm">
-                    <option value="basic">Basic (Fast)</option>
-                    <option value="edge">Edge-Preserving</option>
-                    <option value="frequency">Frequency Domain</option>
-                </select>
-            </div>
         </div>
 
         <div style="text-align: center;">
@@ -611,7 +549,6 @@ function getHTML() {
             if (!selectedFile) return;
 
             const text = document.getElementById('watermarkText').value;
-            const algorithm = document.getElementById('algorithm').value;
 
             processBtn.disabled = true;
             progressBar.style.display = 'block';
@@ -624,7 +561,6 @@ function getHTML() {
                 const formData = new FormData();
                 formData.append('image', selectedFile);
                 formData.append('text', text);
-                formData.append('algorithm', algorithm);
 
                 updateProgress(60);
 
