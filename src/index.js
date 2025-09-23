@@ -1,4 +1,4 @@
-import { PhotonImage, open_image, grayscale, gaussian_blur, threshold, invert, adjust_brightness, lighten_hsl, desaturate_hsl, selective_color_convert, Rgb } from '@cf-wasm/photon';
+import { PhotonImage, grayscale, gaussian_blur, threshold, invert, adjust_brightness, lighten_hsl, desaturate_hsl, selective_color_convert, Rgb } from '@cf-wasm/photon';
 
 /**
  * Watermark removal service for Cloudflare Workers using Photon WebAssembly
@@ -108,15 +108,22 @@ async function processImageBasic(imageBuffer, watermarkText) {
   try {
     // Use Photon WebAssembly library for actual image processing
     const uint8Array = new Uint8Array(imageBuffer);
+    console.log('Creating PhotonImage from byte slice...');
 
-    // Open image with Photon
-    const photonImage = open_image(uint8Array);
+    // Create PhotonImage directly from bytes (Workers-compatible method)
+    const photonImage = PhotonImage.new_from_byteslice(uint8Array);
+    console.log('PhotonImage created successfully, dimensions:', photonImage.get_width(), 'x', photonImage.get_height());
 
     // Apply watermark removal algorithm
     const processedImage = await applyWatermarkRemoval(photonImage, watermarkText);
 
-    // Get processed image bytes
+    // Get processed image bytes as PNG
+    console.log('Getting processed image bytes...');
     const resultBytes = processedImage.get_bytes();
+
+    // Clean up memory
+    photonImage.free();
+    processedImage.free();
 
     return resultBytes.buffer;
 
@@ -536,6 +543,7 @@ function getHTML() {
             result.style.display = 'none';
 
             try {
+                console.log('CLIENT: Starting image processing...');
                 showMessage('Processing image...', 'info');
                 updateProgress(20);
 
@@ -545,11 +553,13 @@ function getHTML() {
 
                 updateProgress(60);
 
+                console.log('CLIENT: Sending request to /api/remove-watermark...');
                 const response = await fetch('/api/remove-watermark', {
                     method: 'POST',
                     body: formData
                 });
 
+                console.log('CLIENT: Response received, status:', response.status);
                 updateProgress(90);
 
                 if (!response.ok) {
@@ -558,6 +568,7 @@ function getHTML() {
                 }
 
                 processedBlob = await response.blob();
+                console.log('CLIENT: Processed blob received, size:', processedBlob.size);
                 updateProgress(100);
 
                 const url = URL.createObjectURL(processedBlob);
