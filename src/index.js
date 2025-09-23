@@ -157,40 +157,47 @@ function applyComprehensiveWatermarkRemoval(photonImage) {
     const height = photonImage.get_height();
     console.log(`Processing image of size: ${width}x${height}`);
 
-    // Get original pixel data for analysis and modification
-    const originalData = photonImage.get_raw_pixels();
-    const modifiedData = new Uint8Array(originalData); // Create a copy
+    // Get the original image bytes to work with
+    const originalBytes = photonImage.get_bytes();
 
-    // Detect watermark regions
-    const watermarkMask = detectWatermarkRegions(originalData, width, height);
+    // Apply inpainting by recreating the image with modified data
+    const inpaintedBytes = applyInpaintingToImageBytes(originalBytes, width, height);
 
-    // Apply inpainting to the pixel data copy
-    applyInpaintingToPixelData(modifiedData, watermarkMask, width, height);
+    // Create new PhotonImage from the inpainted bytes
+    const newImage = PhotonImage.new_from_byteslice(new Uint8Array(inpaintedBytes));
 
-    // Create new PhotonImage from modified data
-    const newImage = PhotonImage.new_from_raw_pixels(modifiedData, width, height);
-
-    // Copy the new image data back to the original image
-    const newData = newImage.get_raw_pixels();
-    const currentData = photonImage.get_raw_pixels();
-
-    // Copy pixel by pixel
-    for (let i = 0; i < newData.length; i++) {
-      currentData[i] = newData[i];
-    }
-
-    // Clean up the temporary image
-    newImage.free();
+    // Replace the current image's data by copying from the new image
+    // Since we can't directly modify pixels, we'll apply a no-op filter to the new image
+    // and return it instead
+    photonImage.free(); // Clean up original
 
     console.log('Inpainting-based watermark removal completed successfully');
+    return newImage;
   } catch (error) {
     console.error('Error during watermark removal:', error);
     // Fallback to minimal processing
     console.log('Applying minimal fallback processing...');
-    gaussian_blur(photonImage, 0.5); // Very light blur as fallback
+    gaussian_blur(photonImage, 0.5);
+    return photonImage;
   }
+}
 
-  return photonImage;
+function applyInpaintingToImageBytes(imageBytes, width, height) {
+  // Create a temporary PhotonImage to get pixel data
+  const tempImage = PhotonImage.new_from_byteslice(new Uint8Array(imageBytes));
+  const pixelData = tempImage.get_raw_pixels();
+
+  // Detect watermark regions
+  const watermarkMask = detectWatermarkRegions(pixelData, width, height);
+
+  // Apply inpainting to pixel data
+  applyInpaintingToPixelData(pixelData, watermarkMask, width, height);
+
+  // Get the modified image bytes
+  const modifiedBytes = tempImage.get_bytes();
+  tempImage.free();
+
+  return modifiedBytes.buffer;
 }
 
 function applyInpaintingToPixelData(pixelData, watermarkMask, width, height) {
