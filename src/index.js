@@ -196,11 +196,14 @@ function detectWatermarkRegions(pixels, width, height) {
   console.log('Detecting watermark regions...');
 
   const mask = new Uint8Array(width * height);
-  const threshold = 100; // Adjust this value for sensitivity
 
-  // Look for high-contrast regions typical of text watermarks
-  for (let y = 1; y < height - 1; y++) {
-    for (let x = 1; x < width - 1; x++) {
+  // More sensitive detection for semi-transparent watermarks
+  const contrastThreshold = 30; // Lower threshold for subtle watermarks
+  const brightnessThreshold = 180; // Lower threshold for semi-transparent text
+
+  // Look for patterns typical of semi-transparent text watermarks
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
       const idx = (y * width + x) * 4; // RGBA format
 
       // Get pixel intensity (grayscale equivalent)
@@ -209,35 +212,62 @@ function detectWatermarkRegions(pixels, width, height) {
       const b = pixels[idx + 2];
       const intensity = (r + g + b) / 3;
 
-      // Check neighboring pixels for contrast
+      // Check 8-directional neighbors for contrast patterns
       const neighbors = [
+        ((y-1) * width + (x-1)) * 4, // top-left
         ((y-1) * width + x) * 4,     // top
-        ((y+1) * width + x) * 4,     // bottom
+        ((y-1) * width + (x+1)) * 4, // top-right
         (y * width + (x-1)) * 4,     // left
-        (y * width + (x+1)) * 4      // right
+        (y * width + (x+1)) * 4,     // right
+        ((y+1) * width + (x-1)) * 4, // bottom-left
+        ((y+1) * width + x) * 4,     // bottom
+        ((y+1) * width + (x+1)) * 4  // bottom-right
       ];
 
-      let maxContrast = 0;
+      let totalContrast = 0;
+      let contrastCount = 0;
+
       for (const nIdx of neighbors) {
         const nR = pixels[nIdx];
         const nG = pixels[nIdx + 1];
         const nB = pixels[nIdx + 2];
         const nIntensity = (nR + nG + nB) / 3;
         const contrast = Math.abs(intensity - nIntensity);
-        maxContrast = Math.max(maxContrast, contrast);
+        totalContrast += contrast;
+        contrastCount++;
       }
 
-      // Mark as watermark if high contrast and relatively bright/dark
-      if (maxContrast > threshold && (intensity > 200 || intensity < 50)) {
+      const avgContrast = totalContrast / contrastCount;
+
+      // Detect semi-transparent watermarks: moderate contrast + brighter than background
+      // or look for uniformly bright/white regions (typical of SAMPLE watermarks)
+      const isWatermark = (avgContrast > contrastThreshold && intensity > brightnessThreshold) ||
+                         (intensity > 220 && avgContrast > 15); // Very bright regions with some contrast
+
+      if (isWatermark) {
         mask[y * width + x] = 255;
+        console.log(`Watermark pixel detected at (${x}, ${y}) with intensity ${intensity} and contrast ${avgContrast}`);
       }
     }
   }
 
-  // Dilate the mask slightly to ensure we get complete watermark regions
-  const dilatedMask = dilateMask(mask, width, height, 2);
+  // Count detected pixels
+  let detectedPixels = 0;
+  for (let i = 0; i < mask.length; i++) {
+    if (mask[i] > 0) detectedPixels++;
+  }
+  console.log(`Detected ${detectedPixels} watermark pixels before dilation`);
 
-  console.log('Watermark detection completed');
+  // Dilate the mask more aggressively for text watermarks
+  const dilatedMask = dilateMask(mask, width, height, 3);
+
+  // Count dilated pixels
+  let dilatedPixels = 0;
+  for (let i = 0; i < dilatedMask.length; i++) {
+    if (dilatedMask[i] > 0) dilatedPixels++;
+  }
+  console.log(`Total ${dilatedPixels} watermark pixels after dilation`);
+
   return dilatedMask;
 }
 
