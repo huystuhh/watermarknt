@@ -1,4 +1,4 @@
-import { PhotonImage, open_image, grayscale, gaussian_blur, threshold, invert, brighten, hsl, selective_color_convert, Rgb } from '@cf-wasm/photon';
+import { PhotonImage, open_image, grayscale, gaussian_blur, threshold, invert, adjust_brightness, lighten_hsl, desaturate_hsl, selective_color_convert, Rgb } from '@cf-wasm/photon';
 
 /**
  * Watermark removal service for Cloudflare Workers using Photon WebAssembly
@@ -139,13 +139,13 @@ function applyComprehensiveWatermarkRemoval(photonImage) {
   gaussian_blur(photonImage, 6.0);
 
   // Step 2: Reduce saturation significantly to make watermarks less visible
-  hsl(photonImage, 0, -60, -10); // Reduce saturation by 60%, lightness by 10%
+  desaturate_hsl(photonImage, 0.6); // Reduce saturation by 60%
 
   // Step 3: Apply selective color conversion to neutralize watermark colors
-  selective_color_convert(photonImage, "desaturate", new Rgb(255, 255, 255));
+  selective_color_convert(photonImage, new Rgb(255, 255, 255), new Rgb(200, 200, 200), 0.8);
 
   // Step 4: Brighten the image to compensate for processing
-  brighten(photonImage, 25);
+  adjust_brightness(photonImage, 25);
 
   // Step 5: Apply threshold processing to further reduce watermark visibility
   threshold(photonImage, 50);
@@ -462,14 +462,14 @@ function getHTML() {
             <input type="file" id="fileInput" accept="image/*">
         </div>
 
-        <div class="controls">
-            <div class="control-group">
-                <label for="watermarkText">Watermark Text (optional):</label>
-                <input type="text" id="watermarkText" placeholder="e.g., SAMPLE" value="SAMPLE">
+        <div class="controls" style="display: flex; justify-content: center;">
+            <div class="control-group" style="text-align: center;">
+                <label for="watermarkText">Watermark Text</label>
+                <input type="text" id="watermarkText" placeholder="e.g., SAMPLE" value="SAMPLE" style="width: 300px; text-align: center;">
             </div>
         </div>
 
-        <div style="text-align: center;">
+        <div style="text-align: center; margin: 20px 0;">
             <button class="btn" id="processBtn" onclick="processImage()" disabled>
                 Remove Watermark
             </button>
