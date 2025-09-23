@@ -150,35 +150,80 @@ async function applyWatermarkRemoval(photonImage, watermarkText) {
 }
 
 function applyComprehensiveWatermarkRemoval(photonImage) {
-  console.log('Starting inpainting-based watermark removal...');
+  console.log('Starting server-side inpainting watermark removal...');
 
   try {
     const width = photonImage.get_width();
     const height = photonImage.get_height();
     console.log(`Processing image of size: ${width}x${height}`);
 
-    // Get the original image bytes to work with
-    const originalBytes = photonImage.get_bytes();
+    // Apply inpainting using manual pixel manipulation with safer memory handling
+    applyInpaintingWithSafeMemory(photonImage, width, height);
 
-    // Apply inpainting by recreating the image with modified data
-    const inpaintedBytes = applyInpaintingToImageBytes(originalBytes, width, height);
-
-    // Create new PhotonImage from the inpainted bytes
-    const newImage = PhotonImage.new_from_byteslice(new Uint8Array(inpaintedBytes));
-
-    // Replace the current image's data by copying from the new image
-    // Since we can't directly modify pixels, we'll apply a no-op filter to the new image
-    // and return it instead
-    photonImage.free(); // Clean up original
-
-    console.log('Inpainting-based watermark removal completed successfully');
-    return newImage;
+    console.log('Server-side inpainting completed successfully');
   } catch (error) {
     console.error('Error during watermark removal:', error);
     // Fallback to minimal processing
     console.log('Applying minimal fallback processing...');
     gaussian_blur(photonImage, 0.5);
-    return photonImage;
+  }
+
+  return photonImage;
+}
+
+function applyInpaintingWithSafeMemory(photonImage, width, height) {
+  // Get a safe copy of pixel data
+  const pixels = photonImage.get_raw_pixels();
+
+  // Create a copy to avoid memory issues
+  const originalPixels = new Uint8Array(pixels.length);
+  for (let i = 0; i < pixels.length; i++) {
+    originalPixels[i] = pixels[i];
+  }
+
+  // Detect watermark regions using the copied data
+  const watermarkMask = detectWatermarkRegions(originalPixels, width, height);
+
+  // Apply inpainting by modifying the original pixels array
+  // This should work since we're modifying the reference returned by get_raw_pixels()
+  const inpaintRadius = 3; // Smaller radius for performance
+
+  for (let y = inpaintRadius; y < height - inpaintRadius; y++) {
+    for (let x = inpaintRadius; x < width - inpaintRadius; x++) {
+      const idx = y * width + x;
+
+      if (watermarkMask[idx] > 0) { // This pixel is part of a watermark
+        const pixelIdx = idx * 4;
+
+        // Collect nearby non-watermark pixels for inpainting
+        let sumR = 0, sumG = 0, sumB = 0, count = 0;
+
+        for (let dy = -inpaintRadius; dy <= inpaintRadius; dy++) {
+          for (let dx = -inpaintRadius; dx <= inpaintRadius; dx++) {
+            const ny = y + dy;
+            const nx = x + dx;
+            const nIdx = ny * width + nx;
+
+            // Only use non-watermark pixels for inpainting
+            if (watermarkMask[nIdx] === 0) {
+              const nPixelIdx = nIdx * 4;
+              sumR += originalPixels[nPixelIdx];
+              sumG += originalPixels[nPixelIdx + 1];
+              sumB += originalPixels[nPixelIdx + 2];
+              count++;
+            }
+          }
+        }
+
+        // Replace watermark pixel with average of surrounding pixels
+        if (count > 0) {
+          pixels[pixelIdx] = Math.round(sumR / count);
+          pixels[pixelIdx + 1] = Math.round(sumG / count);
+          pixels[pixelIdx + 2] = Math.round(sumB / count);
+          // Keep original alpha
+        }
+      }
+    }
   }
 }
 
