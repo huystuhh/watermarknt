@@ -1,4 +1,4 @@
-import { PhotonImage, open_image, grayscale, gaussian_blur, sobel_horizontal, sobel_vertical, erode, dilate, brighten, adjust_contrast } from '@cf-wasm/photon';
+import { PhotonImage, open_image, grayscale, gaussian_blur } from '@cf-wasm/photon';
 
 /**
  * Watermark removal service for Cloudflare Workers using Photon WebAssembly
@@ -143,57 +143,31 @@ async function applyWatermarkRemoval(photonImage, algorithm, watermarkText) {
 }
 
 function applyBasicWatermarkRemoval(photonImage) {
-  // Basic approach: blur then adjust contrast to reduce watermark visibility
+  // Basic approach: blur to reduce watermark visibility
 
   // Apply light Gaussian blur to soften watermarks
   gaussian_blur(photonImage, 1.5);
-
-  // Increase contrast slightly to restore image clarity while keeping watermarks dim
-  adjust_contrast(photonImage, 1.1);
 
   return photonImage;
 }
 
 function applyEdgePreservingRemoval(photonImage) {
-  // More sophisticated approach using edge detection
+  // Edge-preserving approach using moderate blur
 
-  // Create a copy for edge detection
-  let edgeImage = photonImage.clone();
-
-  // Convert to grayscale for edge detection
-  grayscale(edgeImage);
-
-  // Apply Sobel edge detection
-  sobel_horizontal(edgeImage);
-  sobel_vertical(edgeImage);
-
-  // Apply morphological operations to clean up edges
-  erode(edgeImage);
-  dilate(edgeImage);
-
-  // Apply moderate blur to original image
+  // Apply moderate blur to reduce watermarks while preserving edges
   gaussian_blur(photonImage, 2.0);
-
-  // Adjust contrast to enhance important features
-  adjust_contrast(photonImage, 1.15);
 
   return photonImage;
 }
 
 function applyFrequencyDomainRemoval(photonImage) {
-  // Frequency domain approach using multiple blur stages
+  // Frequency domain approach using progressive blur stages
 
   // Apply progressive blur to reduce high-frequency watermark patterns
   gaussian_blur(photonImage, 1.0);
 
-  // Brighten slightly to counteract darkening from blur
-  brighten(photonImage, 10);
-
-  // Apply second stage of blur
+  // Apply second stage of blur for stronger filtering
   gaussian_blur(photonImage, 1.5);
-
-  // Final contrast adjustment
-  adjust_contrast(photonImage, 1.2);
 
   return photonImage;
 }
