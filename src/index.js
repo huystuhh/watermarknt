@@ -133,25 +133,23 @@ async function applyWatermarkRemoval(photonImage, watermarkText) {
 }
 
 function applyComprehensiveWatermarkRemoval(photonImage) {
-  // EXTREMELY aggressive watermark removal - this WILL be visible
+  // Selective watermark removal - target only watermark areas, preserve original image
 
-  // Step 1: Apply VERY strong blur to completely destroy watermark details
-  gaussian_blur(photonImage, 15.0);
+  // Step 1: Target bright white/light gray watermarks specifically
+  // Convert white watermarks (255,255,255) to match surrounding colors (128,128,128)
+  selective_color_convert(photonImage, new Rgb(255, 255, 255), new Rgb(128, 128, 128), 0.9);
 
-  // Step 2: Completely desaturate to remove all color-based watermarks
-  desaturate_hsl(photonImage, 0.9); // Remove 90% of saturation
+  // Step 2: Target light gray watermarks
+  selective_color_convert(photonImage, new Rgb(240, 240, 240), new Rgb(120, 120, 120), 0.8);
 
-  // Step 3: Apply extreme brightness adjustment
-  adjust_brightness(photonImage, 50);
+  // Step 3: Target semi-transparent white overlays
+  selective_color_convert(photonImage, new Rgb(250, 250, 250), new Rgb(130, 130, 130), 0.7);
 
-  // Step 4: Apply aggressive threshold to flatten out watermark areas
-  threshold(photonImage, 30);
+  // Step 4: Target very light watermarks
+  selective_color_convert(photonImage, new Rgb(230, 230, 230), new Rgb(110, 110, 110), 0.6);
 
-  // Step 5: Apply another round of blur to smooth everything out
-  gaussian_blur(photonImage, 10.0);
-
-  // Step 6: Final brightness boost
-  adjust_brightness(photonImage, 30);
+  // Step 5: Apply MINIMAL blur only to smooth out watermark edges
+  gaussian_blur(photonImage, 1.5);
 
   return photonImage;
 }
