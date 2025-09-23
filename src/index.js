@@ -150,31 +150,27 @@ async function applyWatermarkRemoval(photonImage, watermarkText) {
 }
 
 function applyComprehensiveWatermarkRemoval(photonImage) {
-  // Direct pixel manipulation approach - this WILL change the image visibly
-  console.log('Starting watermark removal processing...');
+  // Balanced watermark removal - remove watermarks while preserving image quality
+  console.log('Starting balanced watermark removal processing...');
 
   try {
-    // Step 1: Apply strong threshold to make bright areas (watermarks) very obvious
-    console.log('Applying threshold...');
-    threshold(photonImage, 150);
+    // Step 1: Light desaturation to reduce watermark color prominence
+    console.log('Applying desaturation...');
+    desaturate_hsl(photonImage, 0.3); // 30% desaturation instead of 90%
 
-    // Step 2: Invert the image (this will definitely be visible!)
-    console.log('Applying invert...');
-    invert(photonImage);
-
-    // Step 3: Apply brightness adjustment
+    // Step 2: Selective brightness adjustment to target bright watermarks
     console.log('Applying brightness adjustment...');
-    adjust_brightness(photonImage, -50);
+    adjust_brightness(photonImage, -15); // Gentle brightness reduction
 
-    // Step 4: Invert back to restore general appearance but with modifications
-    console.log('Applying second invert...');
-    invert(photonImage);
+    // Step 3: Light blur to soften watermark edges without destroying detail
+    console.log('Applying light blur...');
+    gaussian_blur(photonImage, 1.8); // Much lighter blur
 
-    // Step 5: Apply blur to smooth out the harsh processing
-    console.log('Applying blur...');
-    gaussian_blur(photonImage, 3.0);
+    // Step 4: Slight threshold to reduce watermark opacity
+    console.log('Applying light threshold...');
+    threshold(photonImage, 40); // Lower threshold to preserve more detail
 
-    console.log('Watermark removal processing completed successfully');
+    console.log('Balanced watermark removal completed successfully');
   } catch (error) {
     console.error('Error during watermark removal:', error);
   }
