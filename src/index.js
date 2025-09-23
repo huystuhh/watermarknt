@@ -186,7 +186,7 @@ function applyInpaintingWithSafeMemory(photonImage, width, height) {
 
   // Apply inpainting by modifying the original pixels array
   // This should work since we're modifying the reference returned by get_raw_pixels()
-  const inpaintRadius = 3; // Smaller radius for performance
+  const inpaintRadius = 8; // Larger radius for better inpainting of bold text
 
   for (let y = inpaintRadius; y < height - inpaintRadius; y++) {
     for (let x = inpaintRadius; x < width - inpaintRadius; x++) {
@@ -291,57 +291,68 @@ function applyInpaintingToPixelData(pixelData, watermarkMask, width, height) {
 }
 
 function detectWatermarkRegions(pixels, width, height) {
-
   const mask = new Uint8Array(width * height);
 
-  // More sensitive detection for semi-transparent watermarks
-  const contrastThreshold = 30; // Lower threshold for subtle watermarks
-  const brightnessThreshold = 180; // Lower threshold for semi-transparent text
+  // Focus on center region where large watermarks typically appear
+  const centerX = Math.floor(width / 2);
+  const centerY = Math.floor(height / 2);
+  const searchWidth = Math.floor(width * 0.6); // Search in 60% of image width
+  const searchHeight = Math.floor(height * 0.6); // Search in 60% of image height
 
-  // Look for patterns typical of semi-transparent text watermarks
-  for (let y = 2; y < height - 2; y++) {
-    for (let x = 2; x < width - 2; x++) {
-      const idx = (y * width + x) * 4; // RGBA format
+  const startX = centerX - Math.floor(searchWidth / 2);
+  const endX = centerX + Math.floor(searchWidth / 2);
+  const startY = centerY - Math.floor(searchHeight / 2);
+  const endY = centerY + Math.floor(searchHeight / 2);
 
-      // Get pixel intensity (grayscale equivalent)
+  console.log(`Searching for large watermarks in center region: ${startX}-${endX}, ${startY}-${endY}`);
+
+  // More aggressive detection for large, bold text watermarks
+  for (let y = Math.max(5, startY); y < Math.min(height - 5, endY); y++) {
+    for (let x = Math.max(5, startX); x < Math.min(width - 5, endX); x++) {
+      const idx = (y * width + x) * 4;
+
+      // Get pixel intensity
       const r = pixels[idx];
       const g = pixels[idx + 1];
       const b = pixels[idx + 2];
       const intensity = (r + g + b) / 3;
 
-      // Check 8-directional neighbors for contrast patterns
-      const neighbors = [
-        ((y-1) * width + (x-1)) * 4, // top-left
-        ((y-1) * width + x) * 4,     // top
-        ((y-1) * width + (x+1)) * 4, // top-right
-        (y * width + (x-1)) * 4,     // left
-        (y * width + (x+1)) * 4,     // right
-        ((y+1) * width + (x-1)) * 4, // bottom-left
-        ((y+1) * width + x) * 4,     // bottom
-        ((y+1) * width + (x+1)) * 4  // bottom-right
-      ];
+      // For large bold watermarks, look for:
+      // 1. Bright pixels (white/light text)
+      // 2. High contrast with surroundings
+      // 3. Consistent patterns (not isolated pixels)
 
-      let totalContrast = 0;
-      let contrastCount = 0;
+      let contrastSum = 0;
+      let neighborCount = 0;
+      const checkRadius = 3; // Larger radius for bold text detection
 
-      for (const nIdx of neighbors) {
-        const nR = pixels[nIdx];
-        const nG = pixels[nIdx + 1];
-        const nB = pixels[nIdx + 2];
-        const nIntensity = (nR + nG + nB) / 3;
-        const contrast = Math.abs(intensity - nIntensity);
-        totalContrast += contrast;
-        contrastCount++;
+      for (let dy = -checkRadius; dy <= checkRadius; dy++) {
+        for (let dx = -checkRadius; dx <= checkRadius; dx++) {
+          if (dx === 0 && dy === 0) continue;
+
+          const ny = y + dy;
+          const nx = x + dx;
+
+          if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+            const nIdx = (ny * width + nx) * 4;
+            const nR = pixels[nIdx];
+            const nG = pixels[nIdx + 1];
+            const nB = pixels[nIdx + 2];
+            const nIntensity = (nR + nG + nB) / 3;
+
+            contrastSum += Math.abs(intensity - nIntensity);
+            neighborCount++;
+          }
+        }
       }
 
-      const avgContrast = totalContrast / contrastCount;
+      const avgContrast = contrastSum / neighborCount;
 
-      // Detect semi-transparent watermarks: moderate contrast + brighter than background
-      // or look for uniformly bright/white regions (typical of SAMPLE watermarks)
-      const isWatermark = (avgContrast > contrastThreshold && intensity > brightnessThreshold) ||
-                         (intensity > 220 && avgContrast > 15); // Very bright regions with some contrast
+      // Detect large bold watermarks with more aggressive thresholds
+      const isBrightWatermark = intensity > 200 && avgContrast > 20; // Bright text with contrast
+      const isConsistentBright = intensity > 220; // Very bright pixels (common in bold watermarks)
 
-      if (isWatermark) {
+      if (isBrightWatermark || isConsistentBright) {
         mask[y * width + x] = 255;
       }
     }
@@ -352,17 +363,17 @@ function detectWatermarkRegions(pixels, width, height) {
   for (let i = 0; i < mask.length; i++) {
     if (mask[i] > 0) detectedPixels++;
   }
-  console.log(`Detected ${detectedPixels} watermark pixels before dilation`);
+  console.log(`Detected ${detectedPixels} watermark pixels in center region`);
 
-  // Dilate the mask more aggressively for text watermarks
-  const dilatedMask = dilateMask(mask, width, height, 3);
+  // Aggressive dilation for large text watermarks
+  const dilatedMask = dilateMask(mask, width, height, 6); // Larger dilation for bold text
 
   // Count dilated pixels
   let dilatedPixels = 0;
   for (let i = 0; i < dilatedMask.length; i++) {
     if (dilatedMask[i] > 0) dilatedPixels++;
   }
-  console.log(`Total ${dilatedPixels} watermark pixels after dilation`);
+  console.log(`Total ${dilatedPixels} watermark pixels after aggressive dilation`);
 
   return dilatedMask;
 }
