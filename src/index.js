@@ -103,35 +103,30 @@ async function handleWatermarkRemoval(request, env) {
 
 async function processImageBasic(imageBuffer, watermarkText) {
   console.log('=== PROCESSING IMAGE BASIC CALLED ===');
-  console.log('Processing image for watermark removal using Photon WebAssembly');
+  console.log('Processing image for watermark removal using manual inpainting');
 
   try {
-    // Use Photon WebAssembly library for actual image processing
-    const uint8Array = new Uint8Array(imageBuffer);
-    console.log('Creating PhotonImage from byte slice...');
-
-    // Create PhotonImage directly from bytes (Workers-compatible method)
-    const photonImage = PhotonImage.new_from_byteslice(uint8Array);
-    console.log('PhotonImage created successfully, dimensions:', photonImage.get_width(), 'x', photonImage.get_height());
-
-    // Apply watermark removal algorithm (modifies image in-place)
-    await applyWatermarkRemoval(photonImage, watermarkText);
-
-    // Get processed image bytes as PNG
-    console.log('Getting processed image bytes...');
-    const resultBytes = photonImage.get_bytes();
-
-    // Clean up memory after getting bytes
-    photonImage.free();
-
-    return resultBytes.buffer;
+    // Try manual inpainting approach first
+    const result = await processWithManualInpainting(imageBuffer);
+    return result;
 
   } catch (error) {
-    console.error('Photon processing failed:', error);
+    console.error('Manual inpainting failed:', error);
 
-    // Try fallback processing
+    // Fallback to Photon processing
     try {
-      return await processWithSimpleFallback(imageBuffer);
+      const uint8Array = new Uint8Array(imageBuffer);
+      const photonImage = PhotonImage.new_from_byteslice(uint8Array);
+
+      // Apply simple but effective processing
+      gaussian_blur(photonImage, 2.0);
+      adjust_brightness(photonImage, -20);
+      gaussian_blur(photonImage, 1.0);
+
+      const resultBytes = photonImage.get_bytes();
+      photonImage.free();
+      return resultBytes.buffer;
+
     } catch (fallbackError) {
       console.error('Fallback processing failed:', fallbackError);
       return imageBuffer;
@@ -408,6 +403,108 @@ function dilateMask(mask, width, height, radius) {
   return dilated;
 }
 
+
+async function processWithManualInpainting(imageBuffer) {
+  console.log('Starting manual inpainting process...');
+
+  // Create PhotonImage to get pixel data and dimensions
+  const uint8Array = new Uint8Array(imageBuffer);
+  const photonImage = PhotonImage.new_from_byteslice(uint8Array);
+  const width = photonImage.get_width();
+  const height = photonImage.get_height();
+
+  console.log(`Image dimensions: ${width}x${height}`);
+
+  // Get pixel data
+  const pixels = photonImage.get_raw_pixels();
+
+  // Create a working copy of pixel data
+  const workingPixels = new Uint8Array(pixels.length);
+  for (let i = 0; i < pixels.length; i++) {
+    workingPixels[i] = pixels[i];
+  }
+
+  // Detect and inpaint watermark regions
+  const processed = manualInpaintWatermark(workingPixels, width, height);
+
+  // Create new image from processed pixels
+  const processedImage = PhotonImage.new_from_byteslice(processed);
+  const resultBytes = processedImage.get_bytes();
+
+  // Clean up
+  photonImage.free();
+  processedImage.free();
+
+  console.log('Manual inpainting completed');
+  return resultBytes.buffer;
+}
+
+function manualInpaintWatermark(pixels, width, height) {
+  console.log('Applying manual inpainting to center watermark region...');
+
+  // Focus on center area where large watermarks appear
+  const centerX = Math.floor(width / 2);
+  const centerY = Math.floor(height / 2);
+  const searchRadius = Math.min(width, height) * 0.3; // 30% of smaller dimension
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      // Check if we're in the center watermark region
+      const distFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+      if (distFromCenter > searchRadius) continue;
+
+      const idx = (y * width + x) * 4;
+
+      // Get pixel intensity
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
+      const intensity = (r + g + b) / 3;
+
+      // Detect bright watermark pixels (typical for bold text watermarks)
+      if (intensity > 210) { // Very bright pixels likely to be watermark
+
+        // Inpaint by averaging surrounding non-bright pixels
+        let sumR = 0, sumG = 0, sumB = 0, count = 0;
+        const inpaintRadius = 12; // Large radius for better blending
+
+        for (let dy = -inpaintRadius; dy <= inpaintRadius; dy++) {
+          for (let dx = -inpaintRadius; dx <= inpaintRadius; dx++) {
+            const ny = y + dy;
+            const nx = x + dx;
+
+            if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+              const nIdx = (ny * width + nx) * 4;
+              const nR = pixels[nIdx];
+              const nG = pixels[nIdx + 1];
+              const nB = pixels[nIdx + 2];
+              const nIntensity = (nR + nG + nB) / 3;
+
+              // Only use darker pixels for inpainting (avoid other watermark pixels)
+              if (nIntensity < 200) {
+                sumR += nR;
+                sumG += nG;
+                sumB += nB;
+                count++;
+              }
+            }
+          }
+        }
+
+        // Replace bright pixel with average of surrounding darker pixels
+        if (count > 0) {
+          pixels[idx] = Math.round(sumR / count);
+          pixels[idx + 1] = Math.round(sumG / count);
+          pixels[idx + 2] = Math.round(sumB / count);
+          // Keep original alpha
+        }
+      }
+    }
+  }
+
+  console.log('Manual inpainting of center region completed');
+  return pixels;
+}
 
 async function processWithSimpleFallback(imageBuffer) {
   console.log('Fallback processing - returning original image');
