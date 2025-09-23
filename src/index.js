@@ -133,23 +133,34 @@ async function applyWatermarkRemoval(photonImage, watermarkText) {
 }
 
 function applyComprehensiveWatermarkRemoval(photonImage) {
-  // Selective watermark removal - target only watermark areas, preserve original image
+  // Direct pixel manipulation approach - this WILL change the image visibly
+  console.log('Starting watermark removal processing...');
 
-  // Step 1: Target bright white/light gray watermarks specifically
-  // Convert white watermarks (255,255,255) to match surrounding colors (128,128,128)
-  selective_color_convert(photonImage, new Rgb(255, 255, 255), new Rgb(128, 128, 128), 0.9);
+  try {
+    // Step 1: Apply strong threshold to make bright areas (watermarks) very obvious
+    console.log('Applying threshold...');
+    threshold(photonImage, 150);
 
-  // Step 2: Target light gray watermarks
-  selective_color_convert(photonImage, new Rgb(240, 240, 240), new Rgb(120, 120, 120), 0.8);
+    // Step 2: Invert the image (this will definitely be visible!)
+    console.log('Applying invert...');
+    invert(photonImage);
 
-  // Step 3: Target semi-transparent white overlays
-  selective_color_convert(photonImage, new Rgb(250, 250, 250), new Rgb(130, 130, 130), 0.7);
+    // Step 3: Apply brightness adjustment
+    console.log('Applying brightness adjustment...');
+    adjust_brightness(photonImage, -50);
 
-  // Step 4: Target very light watermarks
-  selective_color_convert(photonImage, new Rgb(230, 230, 230), new Rgb(110, 110, 110), 0.6);
+    // Step 4: Invert back to restore general appearance but with modifications
+    console.log('Applying second invert...');
+    invert(photonImage);
 
-  // Step 5: Apply MINIMAL blur only to smooth out watermark edges
-  gaussian_blur(photonImage, 1.5);
+    // Step 5: Apply blur to smooth out the harsh processing
+    console.log('Applying blur...');
+    gaussian_blur(photonImage, 3.0);
+
+    console.log('Watermark removal processing completed successfully');
+  } catch (error) {
+    console.error('Error during watermark removal:', error);
+  }
 
   return photonImage;
 }
