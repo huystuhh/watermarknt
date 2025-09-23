@@ -157,14 +157,30 @@ function applyComprehensiveWatermarkRemoval(photonImage) {
     const height = photonImage.get_height();
     console.log(`Processing image of size: ${width}x${height}`);
 
-    // Get original pixel data for analysis
+    // Get original pixel data for analysis and modification
     const originalData = photonImage.get_raw_pixels();
+    const modifiedData = new Uint8Array(originalData); // Create a copy
 
     // Detect watermark regions
     const watermarkMask = detectWatermarkRegions(originalData, width, height);
 
-    // Apply inpainting pixel by pixel using Photon's put_pixel method
-    applyInpaintingWithPhoton(photonImage, originalData, watermarkMask, width, height);
+    // Apply inpainting to the pixel data copy
+    applyInpaintingToPixelData(modifiedData, watermarkMask, width, height);
+
+    // Create new PhotonImage from modified data
+    const newImage = PhotonImage.new_from_raw_pixels(modifiedData, width, height);
+
+    // Copy the new image data back to the original image
+    const newData = newImage.get_raw_pixels();
+    const currentData = photonImage.get_raw_pixels();
+
+    // Copy pixel by pixel
+    for (let i = 0; i < newData.length; i++) {
+      currentData[i] = newData[i];
+    }
+
+    // Clean up the temporary image
+    newImage.free();
 
     console.log('Inpainting-based watermark removal completed successfully');
   } catch (error) {
@@ -177,15 +193,18 @@ function applyComprehensiveWatermarkRemoval(photonImage) {
   return photonImage;
 }
 
-function applyInpaintingWithPhoton(photonImage, originalData, watermarkMask, width, height) {
+function applyInpaintingToPixelData(pixelData, watermarkMask, width, height) {
+  const inpaintRadius = 5;
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx = y * width + x;
 
       if (watermarkMask[idx] > 0) { // This pixel is part of a watermark
+        const pixelIdx = idx * 4;
+
         // Collect nearby non-watermark pixels for inpainting
         let sumR = 0, sumG = 0, sumB = 0, count = 0;
-        const inpaintRadius = 5;
 
         for (let dy = -inpaintRadius; dy <= inpaintRadius; dy++) {
           for (let dx = -inpaintRadius; dx <= inpaintRadius; dx++) {
@@ -198,9 +217,9 @@ function applyInpaintingWithPhoton(photonImage, originalData, watermarkMask, wid
               // Only use non-watermark pixels for inpainting
               if (watermarkMask[nIdx] === 0) {
                 const nPixelIdx = nIdx * 4;
-                sumR += originalData[nPixelIdx];
-                sumG += originalData[nPixelIdx + 1];
-                sumB += originalData[nPixelIdx + 2];
+                sumR += pixelData[nPixelIdx];
+                sumG += pixelData[nPixelIdx + 1];
+                sumB += pixelData[nPixelIdx + 2];
                 count++;
               }
             }
@@ -209,13 +228,10 @@ function applyInpaintingWithPhoton(photonImage, originalData, watermarkMask, wid
 
         // Replace watermark pixel with average of surrounding pixels
         if (count > 0) {
-          const newR = Math.round(sumR / count);
-          const newG = Math.round(sumG / count);
-          const newB = Math.round(sumB / count);
-
-          // Use Photon's put_pixel method to properly set the pixel
-          const newPixel = new Rgb(newR, newG, newB);
-          photonImage.put_pixel(x, y, newPixel);
+          pixelData[pixelIdx] = Math.round(sumR / count);
+          pixelData[pixelIdx + 1] = Math.round(sumG / count);
+          pixelData[pixelIdx + 2] = Math.round(sumB / count);
+          // Keep original alpha (pixelData[pixelIdx + 3])
         }
       }
     }
