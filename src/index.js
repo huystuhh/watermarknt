@@ -114,16 +114,15 @@ async function processImageBasic(imageBuffer, watermarkText) {
     const photonImage = PhotonImage.new_from_byteslice(uint8Array);
     console.log('PhotonImage created successfully, dimensions:', photonImage.get_width(), 'x', photonImage.get_height());
 
-    // Apply watermark removal algorithm
-    const processedImage = await applyWatermarkRemoval(photonImage, watermarkText);
+    // Apply watermark removal algorithm (modifies image in-place)
+    await applyWatermarkRemoval(photonImage, watermarkText);
 
     // Get processed image bytes as PNG
     console.log('Getting processed image bytes...');
-    const resultBytes = processedImage.get_bytes();
+    const resultBytes = photonImage.get_bytes();
 
-    // Clean up memory
+    // Clean up memory after getting bytes
     photonImage.free();
-    processedImage.free();
 
     return resultBytes.buffer;
 
@@ -143,8 +142,11 @@ async function processImageBasic(imageBuffer, watermarkText) {
 async function applyWatermarkRemoval(photonImage, watermarkText) {
   console.log('Applying aggressive watermark removal algorithm');
 
-  // Apply comprehensive watermark removal using multiple techniques
-  return applyComprehensiveWatermarkRemoval(photonImage);
+  // Apply comprehensive watermark removal using multiple techniques (modifies in-place)
+  applyComprehensiveWatermarkRemoval(photonImage);
+
+  // Return the same image (which has been modified)
+  return photonImage;
 }
 
 function applyComprehensiveWatermarkRemoval(photonImage) {
