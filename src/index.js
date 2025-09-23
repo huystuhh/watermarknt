@@ -53,10 +53,13 @@ export default {
 };
 
 async function handleWatermarkRemoval(request, env) {
+  console.log('=== WATERMARK REMOVAL REQUEST RECEIVED ===');
   try {
     const formData = await request.formData();
     const imageFile = formData.get('image');
     const watermarkText = formData.get('text') || 'SAMPLE';
+    console.log('Image file received:', !!imageFile);
+    console.log('Watermark text:', watermarkText);
 
     if (!imageFile) {
       return new Response(JSON.stringify({ error: 'No image file provided' }), {
@@ -66,10 +69,14 @@ async function handleWatermarkRemoval(request, env) {
     }
 
     // Convert file to ArrayBuffer for processing
+    console.log('Converting image to ArrayBuffer...');
     const imageBuffer = await imageFile.arrayBuffer();
+    console.log('Image buffer size:', imageBuffer.byteLength);
 
     // Process image with watermark removal
+    console.log('Calling processImageBasic...');
     const result = await processImageBasic(imageBuffer, watermarkText);
+    console.log('Processing completed, result size:', result.byteLength);
 
     return new Response(result, {
       headers: {
@@ -95,6 +102,7 @@ async function handleWatermarkRemoval(request, env) {
 }
 
 async function processImageBasic(imageBuffer, watermarkText) {
+  console.log('=== PROCESSING IMAGE BASIC CALLED ===');
   console.log('Processing image for watermark removal using Photon WebAssembly');
 
   try {
@@ -166,52 +174,13 @@ function applyComprehensiveWatermarkRemoval(photonImage) {
 }
 
 async function processWithSimpleFallback(imageBuffer) {
-  console.log('Fallback processing');
+  console.log('Fallback processing - returning original image');
 
   // Simple fallback that doesn't corrupt the image
   await new Promise(resolve => setTimeout(resolve, 1000));
 
   // Return original image if Photon fails
   return imageBuffer;
-}
-
-// Legacy Canvas function - no longer used since we're using Photon WebAssembly
-// Keeping for reference but this won't be called anymore
-
-async function processWithFallback(imageBuffer, watermarkText, algorithm) {
-  console.log(`Processing with ${algorithm} algorithm using byte-level operations`);
-
-  try {
-    // Implement actual watermark removal using byte manipulation
-    // This works in both local dev and deployed Workers
-    return await processImageBytes(imageBuffer, watermarkText, algorithm);
-  } catch (error) {
-    console.error('Byte-level processing failed:', error);
-    return imageBuffer;
-  }
-}
-
-async function processImageBytes(imageBuffer, watermarkText, algorithm) {
-  const uint8Array = new Uint8Array(imageBuffer);
-
-  // Parse image format and apply processing
-  if (isPNG(uint8Array)) {
-    return processPNGBytes(uint8Array, algorithm, watermarkText);
-  } else if (isJPEG(uint8Array)) {
-    return processJPEGBytes(uint8Array, algorithm, watermarkText);
-  } else {
-    // Apply generic byte-level filtering
-    return processGenericBytes(uint8Array, algorithm, watermarkText);
-  }
-}
-
-function isPNG(uint8Array) {
-  return uint8Array[0] === 0x89 && uint8Array[1] === 0x50 &&
-         uint8Array[2] === 0x4E && uint8Array[3] === 0x47;
-}
-
-function isJPEG(uint8Array) {
-  return uint8Array[0] === 0xFF && uint8Array[1] === 0xD8;
 }
 
 async function processPNGBytes(uint8Array, algorithm, watermarkText) {
