@@ -191,77 +191,62 @@ function isJPEG(uint8Array) {
 }
 
 async function processPNGBytes(uint8Array, algorithm, watermarkText) {
-  console.log('Processing PNG with byte-level watermark removal');
+  console.log('Processing PNG - applying minimal filtering to avoid corruption');
 
   const processed = new Uint8Array(uint8Array);
 
-  // Find IDAT chunks (image data) and apply filtering
-  let pos = 8; // Skip PNG signature
+  // Very conservative approach: only modify non-critical data
+  // Apply subtle filtering to potential metadata areas
+  for (let i = 100; i < processed.length - 100; i += 50) {
+    const current = processed[i];
+    const prev = processed[i - 1];
+    const next = processed[i + 1];
 
-  while (pos < processed.length - 8) {
-    const chunkLength = (processed[pos] << 24) | (processed[pos + 1] << 16) |
-                       (processed[pos + 2] << 8) | processed[pos + 3];
-    const chunkType = String.fromCharCode(processed[pos + 4], processed[pos + 5],
-                                         processed[pos + 6], processed[pos + 7]);
+    // Only modify if it looks like high-contrast watermark data
+    const variation = Math.abs(current - prev) + Math.abs(current - next);
 
-    if (chunkType === 'IDAT') {
-      // Apply algorithm-specific filtering to image data
-      const dataStart = pos + 8;
-      const dataEnd = dataStart + chunkLength;
-
+    if (variation > 100 && current > 150) { // High contrast + bright pixels
       switch (algorithm) {
         case 'edge':
-          applyEdgeFilterToBytes(processed, dataStart, dataEnd);
+          processed[i] = Math.round(current * 0.9); // Slight dimming
           break;
         case 'frequency':
-          applyFrequencyFilterToBytes(processed, dataStart, dataEnd);
+          processed[i] = Math.round((current + prev + next) / 3);
           break;
         default:
-          applyBasicFilterToBytes(processed, dataStart, dataEnd);
+          processed[i] = Math.round(current * 0.95); // Very subtle change
       }
     }
-
-    pos += chunkLength + 12; // Move to next chunk
-    if (pos >= processed.length) break;
   }
 
   return processed.buffer;
 }
 
 async function processJPEGBytes(uint8Array, algorithm, watermarkText) {
-  console.log('Processing JPEG with byte-level watermark removal');
+  console.log('Processing JPEG - applying conservative filtering');
 
   const processed = new Uint8Array(uint8Array);
 
-  // Find image data segments and apply filtering
-  for (let i = 2; i < processed.length - 1; i++) {
-    if (processed[i] === 0xFF) {
-      // Skip markers, process data sections
-      if (processed[i + 1] >= 0xC0 && processed[i + 1] <= 0xFE) {
-        i += 2; // Skip marker
-        continue;
-      }
+  // Very conservative: only touch potential image data, skip all markers
+  for (let i = 500; i < processed.length - 500; i += 200) {
+    // Skip JPEG markers completely
+    if (processed[i] === 0xFF || processed[i-1] === 0xFF) {
+      continue;
     }
 
-    // Apply filtering to potential image data
-    if (i % 100 === 0) { // Sample every 100th byte to avoid corrupting structure
+    const current = processed[i];
+
+    // Only modify bright pixels that might be watermarks
+    if (current > 200) {
       switch (algorithm) {
         case 'edge':
-          processed[i] = Math.round((processed[i] + processed[Math.max(0, i-1)] +
-                                   processed[Math.min(processed.length-1, i+1)]) / 3);
+          processed[i] = Math.round(current * 0.92);
           break;
         case 'frequency':
-          if (Math.abs(processed[i] - processed[Math.max(0, i-10)]) > 50) {
-            processed[i] = Math.round((processed[i] + processed[Math.max(0, i-10)]) / 2);
-          }
+          processed[i] = Math.round(current * 0.88);
           break;
         default:
-          // Basic smoothing
-          const prev = processed[Math.max(0, i-1)];
-          const next = processed[Math.min(processed.length-1, i+1)];
-          if (Math.abs(processed[i] - prev) > 30 || Math.abs(processed[i] - next) > 30) {
-            processed[i] = Math.round((prev + processed[i] + next) / 3);
-          }
+          processed[i] = Math.round(current * 0.96);
       }
     }
   }
@@ -270,33 +255,25 @@ async function processJPEGBytes(uint8Array, algorithm, watermarkText) {
 }
 
 async function processGenericBytes(uint8Array, algorithm, watermarkText) {
-  console.log(`Processing unknown format with ${algorithm} algorithm`);
+  console.log(`Processing unknown format - minimal changes to preserve structure`);
 
   const processed = new Uint8Array(uint8Array);
 
-  // Apply generic byte-level filtering
-  // Skip first 100 bytes (likely headers)
-  for (let i = 100; i < processed.length - 100; i++) {
+  // Extremely conservative: just dim bright pixels that might be watermarks
+  for (let i = 200; i < processed.length - 200; i += 100) {
     const current = processed[i];
-    const prev = processed[i - 1];
-    const next = processed[i + 1];
 
-    // Detect high-frequency patterns (potential watermarks)
-    const variation = Math.abs(current - prev) + Math.abs(current - next);
-
-    if (variation > 60) {
+    // Only modify very bright pixels (likely watermarks)
+    if (current > 220) {
       switch (algorithm) {
         case 'edge':
-          // Edge-preserving smoothing
-          processed[i] = Math.round((current * 0.5 + (prev + next) * 0.25));
+          processed[i] = Math.round(current * 0.9);
           break;
         case 'frequency':
-          // Frequency domain filtering
-          processed[i] = Math.round((prev + current + next) / 3);
+          processed[i] = Math.round(current * 0.85);
           break;
         default:
-          // Basic smoothing
-          processed[i] = Math.round((prev + current + next) / 3);
+          processed[i] = Math.round(current * 0.93);
       }
     }
   }
