@@ -425,15 +425,19 @@ async function processWithManualInpainting(imageBuffer) {
   }
 
   // Detect and inpaint watermark regions
-  const processed = manualInpaintWatermark(workingPixels, width, height);
+  manualInpaintWatermark(workingPixels, width, height);
 
-  // Create new image from processed pixels
-  const processedImage = PhotonImage.new_from_byteslice(processed);
-  const resultBytes = processedImage.get_bytes();
+  // Apply the modified pixels back to the original image
+  const originalPixels = photonImage.get_raw_pixels();
+  for (let i = 0; i < workingPixels.length; i++) {
+    originalPixels[i] = workingPixels[i];
+  }
+
+  // Get the modified image bytes
+  const resultBytes = photonImage.get_bytes();
 
   // Clean up
   photonImage.free();
-  processedImage.free();
 
   console.log('Manual inpainting completed');
   return resultBytes.buffer;
@@ -446,6 +450,8 @@ function manualInpaintWatermark(pixels, width, height) {
   const centerX = Math.floor(width / 2);
   const centerY = Math.floor(height / 2);
   const searchRadius = Math.min(width, height) * 0.3; // 30% of smaller dimension
+
+  let pixelsModified = 0;
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -462,7 +468,8 @@ function manualInpaintWatermark(pixels, width, height) {
       const intensity = (r + g + b) / 3;
 
       // Detect bright watermark pixels (typical for bold text watermarks)
-      if (intensity > 210) { // Very bright pixels likely to be watermark
+      // Lower threshold to catch semi-transparent watermarks like "SAMPLE"
+      if (intensity > 180) { // Lowered threshold to catch more watermark pixels
 
         // Inpaint by averaging surrounding non-bright pixels
         let sumR = 0, sumG = 0, sumB = 0, count = 0;
@@ -481,7 +488,7 @@ function manualInpaintWatermark(pixels, width, height) {
               const nIntensity = (nR + nG + nB) / 3;
 
               // Only use darker pixels for inpainting (avoid other watermark pixels)
-              if (nIntensity < 200) {
+              if (nIntensity < 170) { // Lower threshold to get more background pixels
                 sumR += nR;
                 sumG += nG;
                 sumB += nB;
@@ -497,12 +504,13 @@ function manualInpaintWatermark(pixels, width, height) {
           pixels[idx + 1] = Math.round(sumG / count);
           pixels[idx + 2] = Math.round(sumB / count);
           // Keep original alpha
+          pixelsModified++;
         }
       }
     }
   }
 
-  console.log('Manual inpainting of center region completed');
+  console.log(`Manual inpainting completed - modified ${pixelsModified} pixels`);
   return pixels;
 }
 
