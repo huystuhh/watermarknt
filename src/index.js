@@ -444,18 +444,88 @@ async function processWithManualInpainting(imageBuffer) {
 }
 
 function manualInpaintWatermark(pixels, width, height) {
-  console.log('Applying advanced morphological watermark removal...');
+  console.log('Applying efficient watermark removal...');
 
-  // Step 1: Create enhanced watermark mask using multiple detection methods
-  const watermarkMask = createEnhancedWatermarkMask(pixels, width, height);
+  let pixelsModified = 0;
 
-  // Step 2: Apply morphological operations to refine mask
-  const refinedMask = applyMorphologicalOperations(watermarkMask, width, height);
+  // Focus on center region for large watermarks (more efficient)
+  const centerX = Math.floor(width / 2);
+  const centerY = Math.floor(height / 2);
+  const searchRadius = Math.min(width, height) * 0.3;
 
-  // Step 3: Apply boundary-based inpainting
-  const pixelsModified = applyBoundaryBasedInpainting(pixels, refinedMask, width, height);
+  // Simple but effective detection and inpainting in one pass
+  for (let y = 5; y < height - 5; y++) {
+    for (let x = 5; x < width - 5; x++) {
+      // Skip if not in center region
+      const distFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
+      if (distFromCenter > searchRadius) continue;
 
-  console.log(`Advanced morphological removal completed - modified ${pixelsModified} pixels`);
+      const idx = (y * width + x) * 4;
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
+      const intensity = (r + g + b) / 3;
+
+      // Efficient multi-criteria detection
+      let isWatermark = false;
+
+      // Primary: brightness detection
+      if (intensity > 185) {
+        isWatermark = true;
+      }
+      // Secondary: bright pixels with low color variance (uniform text)
+      else if (intensity > 160) {
+        const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+        if (colorVariance < 20) {
+          isWatermark = true;
+        }
+      }
+
+      if (isWatermark) {
+        // Efficient inpainting: sample 8 directions at medium distance
+        let sumR = 0, sumG = 0, sumB = 0, count = 0;
+        const sampleDistance = 8;
+
+        // Sample in 8 directions
+        const directions = [
+          [-1, -1], [0, -1], [1, -1],
+          [-1,  0],          [1,  0],
+          [-1,  1], [0,  1], [1,  1]
+        ];
+
+        for (const [dx, dy] of directions) {
+          const nx = x + dx * sampleDistance;
+          const ny = y + dy * sampleDistance;
+
+          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+            const nIdx = (ny * width + nx) * 4;
+            const nR = pixels[nIdx];
+            const nG = pixels[nIdx + 1];
+            const nB = pixels[nIdx + 2];
+            const nIntensity = (nR + nG + nB) / 3;
+
+            // Only use darker pixels to avoid sampling other watermark pixels
+            if (nIntensity < 180) {
+              sumR += nR;
+              sumG += nG;
+              sumB += nB;
+              count++;
+            }
+          }
+        }
+
+        // Apply inpainting if we have good samples
+        if (count >= 3) {
+          pixels[idx] = Math.round(sumR / count);
+          pixels[idx + 1] = Math.round(sumG / count);
+          pixels[idx + 2] = Math.round(sumB / count);
+          pixelsModified++;
+        }
+      }
+    }
+  }
+
+  console.log(`Efficient watermark removal completed - modified ${pixelsModified} pixels`);
   return pixels;
 }
 
@@ -1053,8 +1123,20 @@ function getHTML() {
                 updateProgress(90);
 
                 if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Processing failed');
+                    let errorMessage = 'Processing failed';
+                    try {
+                        const contentType = response.headers.get('content-type');
+                        if (contentType && contentType.includes('application/json')) {
+                            const error = await response.json();
+                            errorMessage = error.error || errorMessage;
+                        } else {
+                            const errorText = await response.text();
+                            errorMessage = errorText || errorMessage;
+                        }
+                    } catch (e) {
+                        console.error('Failed to parse error response:', e);
+                    }
+                    throw new Error(errorMessage);
                 }
 
                 processedBlob = await response.blob();
