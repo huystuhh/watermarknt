@@ -444,74 +444,230 @@ async function processWithManualInpainting(imageBuffer) {
 }
 
 function manualInpaintWatermark(pixels, width, height) {
-  console.log('Applying manual inpainting to center watermark region...');
+  console.log('Applying advanced morphological watermark removal...');
 
-  // Focus on center area where large watermarks appear
+  // Step 1: Create enhanced watermark mask using multiple detection methods
+  const watermarkMask = createEnhancedWatermarkMask(pixels, width, height);
+
+  // Step 2: Apply morphological operations to refine mask
+  const refinedMask = applyMorphologicalOperations(watermarkMask, width, height);
+
+  // Step 3: Apply boundary-based inpainting
+  const pixelsModified = applyBoundaryBasedInpainting(pixels, refinedMask, width, height);
+
+  console.log(`Advanced morphological removal completed - modified ${pixelsModified} pixels`);
+  return pixels;
+}
+
+function createEnhancedWatermarkMask(pixels, width, height) {
+  const mask = new Uint8Array(width * height);
+
+  // Focus on center region for large watermarks
   const centerX = Math.floor(width / 2);
   const centerY = Math.floor(height / 2);
-  const searchRadius = Math.min(width, height) * 0.3; // 30% of smaller dimension
-
-  let pixelsModified = 0;
+  const searchRadius = Math.min(width, height) * 0.35;
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      // Check if we're in the center watermark region
       const distFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
       if (distFromCenter > searchRadius) continue;
 
       const idx = (y * width + x) * 4;
-
-      // Get pixel intensity
       const r = pixels[idx];
       const g = pixels[idx + 1];
       const b = pixels[idx + 2];
       const intensity = (r + g + b) / 3;
 
-      // Detect bright watermark pixels (typical for bold text watermarks)
-      // Lower threshold to catch semi-transparent watermarks like "SAMPLE"
-      if (intensity > 180) { // Lowered threshold to catch more watermark pixels
+      // Multi-criteria detection for better watermark identification
+      let isWatermark = false;
 
-        // Inpaint by averaging surrounding non-bright pixels
-        let sumR = 0, sumG = 0, sumB = 0, count = 0;
-        const inpaintRadius = 12; // Large radius for better blending
+      // Criterion 1: Brightness-based detection
+      if (intensity > 185) {
+        isWatermark = true;
+      }
 
-        for (let dy = -inpaintRadius; dy <= inpaintRadius; dy++) {
-          for (let dx = -inpaintRadius; dx <= inpaintRadius; dx++) {
-            const ny = y + dy;
-            const nx = x + dx;
+      // Criterion 2: Edge-based detection for text boundaries
+      if (intensity > 160) {
+        const edgeStrength = calculateEdgeStrength(pixels, x, y, width, height);
+        if (edgeStrength > 30) {
+          isWatermark = true;
+        }
+      }
 
-            if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
-              const nIdx = (ny * width + nx) * 4;
-              const nR = pixels[nIdx];
-              const nG = pixels[nIdx + 1];
-              const nB = pixels[nIdx + 2];
-              const nIntensity = (nR + nG + nB) / 3;
+      // Criterion 3: Color uniformity (watermarks often have consistent color)
+      if (intensity > 150) {
+        const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
+        if (colorVariance < 15) { // Low color variance indicates uniform watermark
+          isWatermark = true;
+        }
+      }
 
-              // Only use darker pixels for inpainting (avoid other watermark pixels)
-              if (nIntensity < 170) { // Lower threshold to get more background pixels
-                sumR += nR;
-                sumG += nG;
-                sumB += nB;
-                count++;
-              }
+      if (isWatermark) {
+        mask[y * width + x] = 255;
+      }
+    }
+  }
+
+  return mask;
+}
+
+function calculateEdgeStrength(pixels, x, y, width, height) {
+  if (x < 1 || x >= width - 1 || y < 1 || y >= height - 1) return 0;
+
+  const getIntensity = (px, py) => {
+    const idx = (py * width + px) * 4;
+    return (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
+  };
+
+  // Simple Sobel edge detection
+  const gx = -getIntensity(x-1, y-1) + getIntensity(x+1, y-1) +
+             -2*getIntensity(x-1, y) + 2*getIntensity(x+1, y) +
+             -getIntensity(x-1, y+1) + getIntensity(x+1, y+1);
+
+  const gy = -getIntensity(x-1, y-1) - 2*getIntensity(x, y-1) - getIntensity(x+1, y-1) +
+             getIntensity(x-1, y+1) + 2*getIntensity(x, y+1) + getIntensity(x+1, y+1);
+
+  return Math.sqrt(gx * gx + gy * gy);
+}
+
+function applyMorphologicalOperations(mask, width, height) {
+  // Apply dilation to expand watermark regions
+  let dilated = morphologicalDilation(mask, width, height, 3);
+
+  // Apply erosion to clean up noise
+  let eroded = morphologicalErosion(dilated, width, height, 1);
+
+  // Apply dilation again to ensure complete watermark coverage
+  let finalMask = morphologicalDilation(eroded, width, height, 4);
+
+  return finalMask;
+}
+
+function morphologicalDilation(mask, width, height, radius) {
+  const result = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let hasWatermark = false;
+
+      for (let dy = -radius; dy <= radius && !hasWatermark; dy++) {
+        for (let dx = -radius; dx <= radius && !hasWatermark; dx++) {
+          const ny = y + dy;
+          const nx = x + dx;
+
+          if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+            if (mask[ny * width + nx] > 0) {
+              hasWatermark = true;
             }
           }
         }
+      }
 
-        // Replace bright pixel with average of surrounding darker pixels
-        if (count > 0) {
-          pixels[idx] = Math.round(sumR / count);
-          pixels[idx + 1] = Math.round(sumG / count);
-          pixels[idx + 2] = Math.round(sumB / count);
-          // Keep original alpha
+      result[y * width + x] = hasWatermark ? 255 : 0;
+    }
+  }
+
+  return result;
+}
+
+function morphologicalErosion(mask, width, height, radius) {
+  const result = new Uint8Array(width * height);
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      let allWatermark = true;
+
+      for (let dy = -radius; dy <= radius && allWatermark; dy++) {
+        for (let dx = -radius; dx <= radius && allWatermark; dx++) {
+          const ny = y + dy;
+          const nx = x + dx;
+
+          if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+            if (mask[ny * width + nx] === 0) {
+              allWatermark = false;
+            }
+          } else {
+            allWatermark = false;
+          }
+        }
+      }
+
+      result[y * width + x] = allWatermark ? 255 : 0;
+    }
+  }
+
+  return result;
+}
+
+function applyBoundaryBasedInpainting(pixels, mask, width, height) {
+  let pixelsModified = 0;
+
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx = y * width + x;
+
+      if (mask[idx] > 0) { // This pixel needs inpainting
+        const pixelIdx = idx * 4;
+
+        // Use progressive distance-based inpainting
+        const inpaintedColor = progressiveInpainting(pixels, mask, x, y, width, height);
+
+        if (inpaintedColor) {
+          pixels[pixelIdx] = inpaintedColor.r;
+          pixels[pixelIdx + 1] = inpaintedColor.g;
+          pixels[pixelIdx + 2] = inpaintedColor.b;
           pixelsModified++;
         }
       }
     }
   }
 
-  console.log(`Manual inpainting completed - modified ${pixelsModified} pixels`);
-  return pixels;
+  return pixelsModified;
+}
+
+function progressiveInpainting(pixels, mask, x, y, width, height) {
+  // Try increasingly larger radii to find good inpainting samples
+  const maxRadius = 20;
+
+  for (let radius = 3; radius <= maxRadius; radius += 2) {
+    let sumR = 0, sumG = 0, sumB = 0, count = 0;
+    let weightSum = 0;
+
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const ny = y + dy;
+        const nx = x + dx;
+
+        if (ny >= 0 && ny < height && nx >= 0 && nx < width) {
+          const nIdx = ny * width + nx;
+
+          // Only use pixels that are not part of watermark
+          if (mask[nIdx] === 0) {
+            const nPixelIdx = nIdx * 4;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            const weight = 1.0 / (1.0 + distance);
+
+            sumR += pixels[nPixelIdx] * weight;
+            sumG += pixels[nPixelIdx + 1] * weight;
+            sumB += pixels[nPixelIdx + 2] * weight;
+            weightSum += weight;
+            count++;
+          }
+        }
+      }
+    }
+
+    // If we found enough samples, use them
+    if (count >= 8) {
+      return {
+        r: Math.round(sumR / weightSum),
+        g: Math.round(sumG / weightSum),
+        b: Math.round(sumB / weightSum)
+      };
+    }
+  }
+
+  return null;
 }
 
 async function processWithSimpleFallback(imageBuffer) {
