@@ -103,34 +103,45 @@ async function handleWatermarkRemoval(request, env) {
 
 async function processImageBasic(imageBuffer, watermarkText) {
   console.log('=== PROCESSING IMAGE BASIC CALLED ===');
-  console.log('Processing image for watermark removal using manual inpainting');
+  console.log('Applying watermark removal using Photon built-ins');
 
   try {
-    // Try manual inpainting approach first
-    const result = await processWithManualInpainting(imageBuffer);
-    return result;
+    const uint8Array = new Uint8Array(imageBuffer);
+    const photonImage = PhotonImage.new_from_byteslice(uint8Array);
+
+    console.log('Applying watermark removal strategy with visible changes...');
+
+    // Strategy: Use Photon functions to reduce watermark visibility
+
+    // 1. Slight blur to soften watermark edges
+    gaussian_blur(photonImage, 1.5);
+    console.log('Applied light blur to soften watermark');
+
+    // 2. Reduce brightness to dim white watermarks
+    adjust_brightness(photonImage, -25);
+    console.log('Applied brightness reduction to dim watermarks');
+
+    // 3. Desaturate to reduce color watermarks
+    desaturate_hsl(photonImage);
+    console.log('Applied desaturation');
+
+    // 4. Another blur pass for smoothing
+    gaussian_blur(photonImage, 1.0);
+    console.log('Applied final smoothing blur');
+
+    // 5. Slight brightness adjustment to compensate
+    adjust_brightness(photonImage, 10);
+    console.log('Applied brightness compensation');
+
+    const resultBytes = photonImage.get_bytes();
+    photonImage.free();
+
+    console.log('Watermark removal complete using Photon built-ins');
+    return resultBytes.buffer;
 
   } catch (error) {
-    console.error('Manual inpainting failed:', error);
-
-    // Fallback to Photon processing
-    try {
-      const uint8Array = new Uint8Array(imageBuffer);
-      const photonImage = PhotonImage.new_from_byteslice(uint8Array);
-
-      // Apply simple but effective processing
-      gaussian_blur(photonImage, 2.0);
-      adjust_brightness(photonImage, -20);
-      gaussian_blur(photonImage, 1.0);
-
-      const resultBytes = photonImage.get_bytes();
-      photonImage.free();
-      return resultBytes.buffer;
-
-    } catch (fallbackError) {
-      console.error('Fallback processing failed:', fallbackError);
-      return imageBuffer;
-    }
+    console.error('Photon processing failed:', error);
+    return imageBuffer;
   }
 }
 
@@ -415,23 +426,14 @@ async function processWithManualInpainting(imageBuffer) {
 
   console.log(`Image dimensions: ${width}x${height}`);
 
-  // Get pixel data
+  // Get pixel data and modify it DIRECTLY (no copying)
   const pixels = photonImage.get_raw_pixels();
+  console.log('Got raw pixels, modifying directly...');
 
-  // Create a working copy of pixel data
-  const workingPixels = new Uint8Array(pixels.length);
-  for (let i = 0; i < pixels.length; i++) {
-    workingPixels[i] = pixels[i];
-  }
+  // Detect and inpaint watermark regions - modify pixels array directly
+  manualInpaintWatermark(pixels, width, height);
 
-  // Detect and inpaint watermark regions
-  manualInpaintWatermark(workingPixels, width, height);
-
-  // Apply the modified pixels back to the original image
-  const originalPixels = photonImage.get_raw_pixels();
-  for (let i = 0; i < workingPixels.length; i++) {
-    originalPixels[i] = workingPixels[i];
-  }
+  console.log('Pixel modifications complete, generating output...');
 
   // Get the modified image bytes
   const resultBytes = photonImage.get_bytes();
@@ -444,88 +446,44 @@ async function processWithManualInpainting(imageBuffer) {
 }
 
 function manualInpaintWatermark(pixels, width, height) {
-  console.log('Applying efficient watermark removal...');
+  console.log('Applying BRUTE FORCE watermark removal - making entire center BLACK...');
 
   let pixelsModified = 0;
 
-  // Focus on center region for large watermarks (more efficient)
+  // Target the center region where SAMPLE watermarks appear
   const centerX = Math.floor(width / 2);
   const centerY = Math.floor(height / 2);
-  const searchRadius = Math.min(width, height) * 0.3;
+  const watermarkWidth = Math.floor(width * 0.3);  // Watermark area width
+  const watermarkHeight = Math.floor(height * 0.1); // Watermark area height
 
-  // Simple but effective detection and inpainting in one pass
-  for (let y = 5; y < height - 5; y++) {
-    for (let x = 5; x < width - 5; x++) {
-      // Skip if not in center region
-      const distFromCenter = Math.sqrt((x - centerX) ** 2 + (y - centerY) ** 2);
-      if (distFromCenter > searchRadius) continue;
+  console.log(`Making BLACK rectangle: ${watermarkWidth}x${watermarkHeight} at center ${centerX}, ${centerY}`);
 
+  // Define the rectangular region where SAMPLE watermark typically appears
+  const startX = centerX - Math.floor(watermarkWidth / 2);
+  const endX = centerX + Math.floor(watermarkWidth / 2);
+  const startY = centerY - Math.floor(watermarkHeight / 2);
+  const endY = centerY + Math.floor(watermarkHeight / 2);
+
+  console.log(`BLACK rectangle coordinates: ${startX}-${endX}, ${startY}-${endY}`);
+
+  // BRUTE FORCE: Make the entire watermark area completely BLACK
+  for (let y = Math.max(0, startY); y < Math.min(height, endY); y++) {
+    for (let x = Math.max(0, startX); x < Math.min(width, endX); x++) {
       const idx = (y * width + x) * 4;
-      const r = pixels[idx];
-      const g = pixels[idx + 1];
-      const b = pixels[idx + 2];
-      const intensity = (r + g + b) / 3;
 
-      // Efficient multi-criteria detection
-      let isWatermark = false;
+      // Make pixel completely BLACK - this WILL be visible
+      pixels[idx] = 0;     // Red = 0
+      pixels[idx + 1] = 0; // Green = 0
+      pixels[idx + 2] = 0; // Blue = 0
+      // Keep alpha unchanged: pixels[idx + 3]
 
-      // Primary: brightness detection
-      if (intensity > 185) {
-        isWatermark = true;
-      }
-      // Secondary: bright pixels with low color variance (uniform text)
-      else if (intensity > 160) {
-        const colorVariance = Math.abs(r - g) + Math.abs(g - b) + Math.abs(r - b);
-        if (colorVariance < 20) {
-          isWatermark = true;
-        }
-      }
-
-      if (isWatermark) {
-        // Efficient inpainting: sample 8 directions at medium distance
-        let sumR = 0, sumG = 0, sumB = 0, count = 0;
-        const sampleDistance = 8;
-
-        // Sample in 8 directions
-        const directions = [
-          [-1, -1], [0, -1], [1, -1],
-          [-1,  0],          [1,  0],
-          [-1,  1], [0,  1], [1,  1]
-        ];
-
-        for (const [dx, dy] of directions) {
-          const nx = x + dx * sampleDistance;
-          const ny = y + dy * sampleDistance;
-
-          if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
-            const nIdx = (ny * width + nx) * 4;
-            const nR = pixels[nIdx];
-            const nG = pixels[nIdx + 1];
-            const nB = pixels[nIdx + 2];
-            const nIntensity = (nR + nG + nB) / 3;
-
-            // Only use darker pixels to avoid sampling other watermark pixels
-            if (nIntensity < 180) {
-              sumR += nR;
-              sumG += nG;
-              sumB += nB;
-              count++;
-            }
-          }
-        }
-
-        // Apply inpainting if we have good samples
-        if (count >= 3) {
-          pixels[idx] = Math.round(sumR / count);
-          pixels[idx + 1] = Math.round(sumG / count);
-          pixels[idx + 2] = Math.round(sumB / count);
-          pixelsModified++;
-        }
-      }
+      pixelsModified++;
     }
   }
 
-  console.log(`Efficient watermark removal completed - modified ${pixelsModified} pixels`);
+  console.log(`BRUTE FORCE: Made ${pixelsModified} pixels completely BLACK`);
+  console.log(`If this doesn't show up, there's a fundamental issue with pixel modification`);
+
   return pixels;
 }
 
